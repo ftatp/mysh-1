@@ -1,6 +1,6 @@
 # For implementation
 CC=gcc -std=c99
-CFLAGS=-I./src -I./include
+CFLAGS=-I./src -I./include -g
 LIB=
 OBJ=./src/utils.o ./src/commands.o ./src/built_in.o
 
