@@ -116,10 +116,6 @@ int evaluate_command(int n_commands, struct single_command (*commands)[512])
 				//TODO: Open a socket that writes to the child
 				char additional_com[4096];
 				read(fd, additional_com, 4096);
-				dup2(tempfd, STDOUT_FILENO );
-				
-				close(tempfd);
-				//close(fd);
 				put_output_to_child(shm, additional_com);
 			}
 			wait(NULL);
@@ -272,7 +268,7 @@ char* get_input_from_parent(int* shm){
     //printf("socket listening...\n");
 
 	//Make the client to connect
-	//while(*shm >= 0);
+	while(*shm >= 0);
     
 	/*********************************/
     /* Accept an incoming connection */
@@ -394,12 +390,13 @@ void put_output_to_child(int* shm, char* additional_com){
     strcpy(server_sockaddr.sun_path, SERVER_PATH);
 
 	//Block until server starts listening
-	//*shm--;
+	*shm--;
     
-	while((rc = connect(client_sock, (struct sockaddr *) &server_sockaddr, len)) == -1){
-        //printf("CONNECT ERROR = 3\n");
-        //close(client_sock);
-        //exit(1);
+	rc = connect(client_sock, (struct sockaddr *) &server_sockaddr, len);
+    if(rc == -1){
+        printf("CONNECT ERROR = 3\n");
+        close(client_sock);
+        exit(1);
     }
     
     /************************************/
