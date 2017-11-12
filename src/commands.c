@@ -2,7 +2,6 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/ipc.h>
-#include <sys/shm.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
 
@@ -12,6 +11,7 @@
 #include <string.h>
 #include <assert.h>
 #include <unistd.h>
+#include <pwd.h>
 
 #include "commands.h"
 #include "built_in.h"
@@ -20,6 +20,7 @@
 #define CLIENT_PATH "tpf_unix_sock.client"
 #define DATA "Hello from server"
 #define SHMSZ 27
+
 
 static struct built_in_command built_in_commands[] = {
 	{ "cd", do_cd, validate_cd_argv },
@@ -76,19 +77,6 @@ int evaluate_command(int n_commands, struct single_command (*commands)[512])
 			//make a process to execute the next command (com + i + 1) by child process
 			needs_pipe = 1;
 			
-//			//make or read shared memory to block the client
-//			if((shmid = shmget(key, SHMSZ, IPC_CREAT | 0666)) < 0){
-//				perror("shmget");
-//				exit(1);
-//			}
-//
-//			if((shm = shmat(shmid, NULL, 0)) == -1){
-//				perror("shmat");
-//				exit(1);
-//			}
-//
-//			*shm = 0;
-
 			if((pid_for_pipe = fork()) < 0){
 				fprintf(stderr, "Fork Failed");
 				return -1;
@@ -152,11 +140,32 @@ int evaluate_command(int n_commands, struct single_command (*commands)[512])
 
 int execute(struct single_command* com){
 	
+	struct passwd* pw = getpwuid(getuid());
+	char* homepath = pw->pw_dir;
+	
+	//printf("home: %s\n", homepath);
+	
+	for(int i = 0; i < com->argc; i++){
+		if(com->argv[i][0] == '~' && ((com->argv[i][1] == '\0') || (com->argv[i][1] == '/'))){
+			char* temp_arg = malloc(sizeof(char) * strlen(com->argv[i]));
+			if(com->argv[i][1] == '\0')
+				strcpy(temp_arg, com->argv[i] + 1);
+			else
+				strcpy(temp_arg, com->argv[i] + 2);
+
+			strcpy(com->argv[i], homepath);
+			com->argv[i][strlen(homepath)] = '/';
+			strcpy((com->argv[i] + strlen(homepath) + 1), temp_arg); 
+
+			//printf("new arg: %s\n", com->argv[i]);
+			free(temp_arg);
+		}
+	}
+
 	int built_in_pos = is_built_in_command(com->argv[0]);
 	if (built_in_pos != -1) {
 		if (built_in_commands[built_in_pos].command_validate(com->argc, com->argv)) {
 			if (built_in_commands[built_in_pos].command_do(com->argc, com->argv) != 0) {
-				// TODO: Implements ~ 
 				fprintf(stderr, "%s: Error occurs\n", com->argv[0]);
 			}
 		} 
