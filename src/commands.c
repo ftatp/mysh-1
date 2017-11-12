@@ -52,9 +52,9 @@ int evaluate_command(int n_commands, struct single_command (*commands)[512])
 	int needs_pipe = 0;
 	int i = 0;
 
-	int *shm;
-	int shmid;
-	key_t key = 8765;
+	//int *shm;
+	//int shmid;
+	//key_t key = 8765;
 
 	if(n_commands > 0) {
 
@@ -76,34 +76,45 @@ int evaluate_command(int n_commands, struct single_command (*commands)[512])
 			//make a process to execute the next command (com + i + 1) by child process
 			needs_pipe = 1;
 			
-			//make or read shared memory to block the client
-			if((shmid = shmget(key, SHMSZ, IPC_CREAT | 0666)) < 0){
-				perror("shmget");
-				exit(1);
-			}
-
-			if((shm = shmat(shmid, NULL, 0)) == -1){
-				perror("shmat");
-				exit(1);
-			}
-
-			*shm = 0;
+//			//make or read shared memory to block the client
+//			if((shmid = shmget(key, SHMSZ, IPC_CREAT | 0666)) < 0){
+//				perror("shmget");
+//				exit(1);
+//			}
+//
+//			if((shm = shmat(shmid, NULL, 0)) == -1){
+//				perror("shmat");
+//				exit(1);
+//			}
+//
+//			*shm = 0;
 
 			if((pid_for_pipe = fork()) < 0){
 				fprintf(stderr, "Fork Failed");
 				return -1;
-			}
-		
-			
+			}			
 		}
 
 		if(pid_for_pipe == 0){
 			// Open a socket that reads from the parent
-			char* additional_com;
-			additional_com = get_input_from_parent(shm);
-			
-			strcpy((com + i + 1)->argv[(com + i + 1)->argc], additional_com);
+			int argc = (com + i + 1)->argc;
+			printf("argc: %d\n", (com + i + 1)->argc);
+
+			(com + i + 1)->argv[argc] = malloc(sizeof(char) * 256);
+
+			get_input_from_parent((com + i + 1)->argv[argc]);
+			dup2(tempfd, STDOUT_FILENO);
+			close(tempfd);
+
+			(com + i + 1)->argv[argc][strlen((com + i + 1)->argv[argc]) - 1] = 0;
+			printf("child received: %s\n", (com + i + 1)->argv[argc]);
+
+			//strcpy((com + i + 1)->argv[argc], additional_com);
+
+			printf("New arg: %s\n", (com + i + 1)->argv[argc]);
+			printf("inside child\n");
 			execute(com + i + 1);
+			free((com + i + 1)->argv[argc]);
 		}
 		else{
 			int ret = execute(com + i);
@@ -114,13 +125,17 @@ int evaluate_command(int n_commands, struct single_command (*commands)[512])
 
 			if(needs_pipe){
 				//TODO: Open a socket that writes to the child
-				char additional_com[4096];
-				read(fd, additional_com, 4096);
-				dup2(tempfd, STDOUT_FILENO );
-				
+				char additional_com[256];
+				char* ret_ary= malloc(sizeof(char) * 256);
+				close(fd);
+				fd = open("a.txt", O_RDONLY, S_IRWXU|S_IRWXG|S_IRWXO);
+				read(fd, additional_com, 256);
+				dup2(tempfd, STDOUT_FILENO);
 				close(tempfd);
 				//close(fd);
-				put_output_to_child(shm, additional_com);
+				put_output_to_child(additional_com, ret_ary);
+				printf("Parent Received: %s\n", ret_ary);
+				free(ret_ary);
 			}
 			wait(NULL);
 			if(needs_pipe){
@@ -129,7 +144,6 @@ int evaluate_command(int n_commands, struct single_command (*commands)[512])
 			}
 			printf("Parent done!!!\n");
 		}
-
 	}
 
 	return 0;
@@ -217,7 +231,7 @@ void free_commands(int n_commands, struct single_command (*commands)[512])
 
 
 
-char* get_input_from_parent(int* shm){
+void get_input_from_parent(char* additional_com){
     int server_sock, client_sock, len, rc;
     int bytes_rec = 0;
     struct sockaddr_un server_sockaddr;
@@ -318,11 +332,12 @@ char* get_input_from_parent(int* shm){
         //printf("DATA RECEIVED = %s\n", buf);
     }
     
+	strcpy(additional_com, buf);
+
     /******************************************/
     /* Send data back to the connected socket */
     /******************************************/
-    memset(buf, 0, 256);
-    strcpy(sendback_buf, DATA);      
+    strcpy(sendback_buf, buf);      
     //printf("Sending data...\n");
     rc = send(client_sock, sendback_buf, strlen(sendback_buf), 0);
     if (rc == -1) {
@@ -332,6 +347,7 @@ char* get_input_from_parent(int* shm){
         exit(1);
     }   
     else {
+		//strcpy(ary, sendback_buf);
         //printf("Data sent!\n");
     }
     
@@ -341,18 +357,20 @@ char* get_input_from_parent(int* shm){
     close(server_sock);
     close(client_sock);
 
-	return buf;
+	return;
 }
 
 
 
 
-void put_output_to_child(int* shm, char* additional_com){
+void put_output_to_child(char* additional_com, char* test_ary){
     int client_sock, rc, len;
     struct sockaddr_un server_sockaddr; 
     struct sockaddr_un client_sockaddr; 
     char buf[256];
-    memset(&server_sockaddr, 0, sizeof(struct sockaddr_un));
+    char received_buf[256];
+
+	memset(&server_sockaddr, 0, sizeof(struct sockaddr_un));
     memset(&client_sockaddr, 0, sizeof(struct sockaddr_un));
      
     /**************************************/
@@ -423,8 +441,8 @@ void put_output_to_child(int* shm, char* additional_com){
     /* and print it.                      */
     /**************************************/
     //printf("Waiting to receive data...\n");
-    memset(buf, 0, sizeof(buf));
-    rc = recv(client_sock, buf, sizeof(buf), MSG_ERRQUEUE);
+    memset(received_buf, 0, sizeof(buf));
+    rc = recv(client_sock, received_buf, sizeof(received_buf), MSG_ERRQUEUE);
     if (rc == -1) {
         printf("RECV ERROR = 5\n");
         close(client_sock);
@@ -438,8 +456,7 @@ void put_output_to_child(int* shm, char* additional_com){
     /* Close the socket and exit. */
     /******************************/
     close(client_sock);
-    
-    return 0;
-
+	strcpy(test_ary, received_buf);
+    return;
 }
 
