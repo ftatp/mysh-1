@@ -7,6 +7,8 @@ void catch_sigint(int signalNo)
   // TODO: File this!
 	//printf("Killing all child\n");
 	//kill(0, signalNo);
+	//fflush(stdout);
+	//printf("\n");
 
 }
 

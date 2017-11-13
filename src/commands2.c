@@ -1,6 +1,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+//#include <sys/ipc.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
 
@@ -18,22 +19,155 @@
 
 #define SERVER_PATH "tpf_unix_sock.server"
 #define CLIENT_PATH "tpf_unix_sock.client"
+#define DATA "Hello from server"
 #define SHMSZ 27
 
 
 static struct built_in_command built_in_commands[] = {
 	{ "cd", do_cd, validate_cd_argv },
-//	{ "pwd", do_pwd, validate_pwd_argv },
+	{ "pwd", do_pwd, validate_pwd_argv },
 	{ "fg", do_fg, validate_fg_argv }
 };
 
-enum success_code{ SUCCESS, CDEXEERROR, CDVARERROR, BLANKCOM, EXITCOM, FORKERROR, COMNOTEXIST };
+void* put_output_to_next_com(void* p_sock){//server side
+    int server_sock, len, rc;
+	int client_sock;
+    int bytes_rec = 0;
+    struct sockaddr_un server_sockaddr;
+    struct sockaddr_un client_sockaddr;     
 
-int client_sock;
-int tempoutfd;
+    char buf[256];
+    char sendback_buf[256];
+
+    int backlog = 10;
+    memset(&server_sockaddr, 0, sizeof(struct sockaddr_un));
+    memset(&client_sockaddr, 0, sizeof(struct sockaddr_un));
+    memset(buf, 0, 256);                
+    
+    /**************************************/
+    /* Create a UNIX domain stream socket */
+    /**************************************/
+    server_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (server_sock == -1){
+        printf("SOCKET ERROR: 1\n");
+        exit(1);
+    }
+    
+    /***************************************/
+    /* Set up the UNIX sockaddr structure  */
+    /* by using AF_UNIX for the family and */
+    /* giving it a filepath to bind to.    */
+    /*                                     */
+    /* Unlink the file so the bind will    */
+    /* succeed, then bind to that file.    */
+    /***************************************/
+    server_sockaddr.sun_family = AF_UNIX;   
+    strcpy(server_sockaddr.sun_path, SERVER_PATH); 
+    len = sizeof(server_sockaddr);
+    
+    unlink(SERVER_PATH);
+    rc = bind(server_sock, (struct sockaddr *) &server_sockaddr, len);
+    if (rc == -1){
+        printf("BIND ERROR: 2\n");
+        close(server_sock);
+        exit(1);
+    }
+    
+    /*********************************/
+    /* Listen for any client sockets */
+    /*********************************/
+    rc = listen(server_sock, backlog);
+    if (rc == -1){ 
+        printf("LISTEN ERROR: 3\n");
+        close(server_sock);
+        exit(1);
+    }
+    //printf("socket listening...\n");
+
+	//Make the client to connect
+	//while(*shm >= 0);
+    
+	/*********************************/
+    /* Accept an incoming connection */
+    /*********************************/
+
+	//printf("Accepting...\n");
+    client_sock = accept(server_sock, (struct sockaddr *) &client_sockaddr, &len);
+    if (client_sock == -1){
+        printf("ACCEPT ERROR: 4\n");
+        close(server_sock);
+        close(client_sock);
+        exit(1);
+    }
+    
+    /****************************************/
+    /* Get the name of the connected socket */
+    /****************************************/
+    len = sizeof(client_sockaddr);
+    rc = getpeername(client_sock, (struct sockaddr *) &client_sockaddr, &len);
+    if (rc == -1){
+        printf("GETPEERNAME ERROR: 5\n");
+        close(server_sock);
+        close(client_sock);
+        exit(1);
+    }
+    else {
+      //  printf("Client socket filepath: %s\n", client_sockaddr.sun_path);
+    }
+
+	//int infd;
+	dup2(client_sock, STDIN_FILENO);
+	//*p_sock = client_sock;
+
+    /************************************/
+    /* Read and print the data          */
+    /* incoming on the connected socket */
+    /************************************/
+    //printf("waiting to read...\n");
+//    bytes_rec = recv(client_sock, buf, sizeof(buf), 0);
+//    if (bytes_rec == -1){
+//        printf("RECV ERROR: 6\n");
+//        close(server_sock);
+//        close(client_sock);
+//        exit(1);
+//    }
+//    else {
+//        //printf("DATA RECEIVED = %s\n", buf);
+//    }
+//    
+//	//strcpy(additional_com, buf);
+//
+//    /******************************************/
+//    /* Send data back to the connected socket */
+//    /******************************************/
+//    strcpy(sendback_buf, buf);      
+//    //printf("Sending data...\n");
+//    rc = send(client_sock, sendback_buf, strlen(sendback_buf), 0);
+//    if (rc == -1) {
+//        printf("SEND ERROR: 7");
+//        close(server_sock);
+//        close(client_sock);
+//        exit(1);
+//    }   
+//    else {
+//		//strcpy(ary, sendback_buf);
+//        //printf("Data sent!\n");
+//    }
+//    
+    /******************************/
+    /* Close the sockets and exit */
+    /******************************/
+    close(server_sock);
+    close(client_sock);
+
+//	return;
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////
 
 void* get_input_from_pre_com(void* p_com){//client side
-    int rc, len;
+    int client_sock, rc, len;
     struct sockaddr_un server_sockaddr; 
     struct sockaddr_un client_sockaddr; 
     char buf[256];
@@ -88,41 +222,17 @@ void* get_input_from_pre_com(void* p_com){//client side
     }
   
 	struct single_command* com = (struct single_command*)p_com;
-	
-	tempoutfd = dup(STDOUT_FILENO);
+	int tempoutfd = dup(STDOUT_FILENO);
 	dup2(client_sock, STDOUT_FILENO);
 
-	int ret = execute(com);
+	execute(com);
 	
 	close(client_sock);
 	dup2(tempoutfd, STDOUT_FILENO);
     
-	switch(ret){
-		case SUCCESS://success
-			break;
-		case CDEXEERROR:
-			fprintf(stderr, "Error occurs: Not able to do cd\n");
-			break;
-		case CDVARERROR:
-			fprintf(stderr, "Error occurs: not able to validate\n");
-		case BLANKCOM:
-			break;
-		case EXITCOM:
-			break;
-		case FORKERROR:
-			break;
-		case COMNOTEXIST:
-			printf("Command does not exists\n");
-			break;
-		default:
-			break;
-	}
-   
-	// Close the socket and exit.
-	pthread_exit(NULL);
+    // Close the socket and exit.
+    close(client_sock);
 }
-
-
 
 static int is_built_in_command(const char* command_name)
 {
@@ -141,46 +251,37 @@ static int is_built_in_command(const char* command_name)
 * Description: Currently this function only handles single built_in commands. You should modify this structure to launch process and offer pipeline functionality.
 */
 
+int com_idx = 0;
 
-//pthread_t client_thread[32];
-//int com_idx = 0;
 
 int evaluate_command(int n_commands, struct single_command (*commands)[512])
 {
 	struct single_command* com = (*commands);	
-	
-//	com_idx = 0;
-	
-	int ret = evaluate(n_commands, com);
-
-	if(ret == 1)
-		return 1;
-
-	return 0;
-}
-
-
-int evaluate(int n_commands, struct single_command* com){
+	int tempfd;
+	int fd; 	
+	pid_t pid_for_pipe;
+	int needs_pipe = 0;
 	int ret = 0;
-	
-	if(n_commands == 1){
+	int len;
+
+	pthread_t client_thread[32];
+
+	if(n_commands < 2){
 		ret = execute(com);
-		if(ret == EXITCOM)
+		if(ret == 1)
 			return 1;
-		else
-			return 0;
 	}
 	else{
 		int server_sock = setup_server();
 		int client_sock;
     	struct sockaddr_un client_sock_addr; 
-		int len;
-		pthread_t client_thread;
+		//char send_buf[256];
+		pthread_t client_thread[32];
 
 		len = sizeof(struct sockaddr_un);
 		memset(&client_sock_addr, 0, len);
 
-		pthread_create(&client_thread, NULL, get_input_from_pre_com, com);
+		pthread_create(&client_thread[com_idx], NULL, get_input_from_pre_com, com + com_idx);
 		
 		client_sock = accept(server_sock, (struct sockaddr *) &client_sock_addr, &len);
 		if (client_sock == -1){
@@ -189,45 +290,47 @@ int evaluate(int n_commands, struct single_command* com){
 			close(client_sock);
 			exit(1);
 		}   
-		pthread_join(client_thread, NULL);
+		pthread_join(client_thread[com_idx++], NULL);
 
 		int tempinfd = dup(STDIN_FILENO);
 		dup2(client_sock, STDIN_FILENO);
-
-		ret = evaluate(n_commands - 1, com + 1);
-		if(ret == EXITCOM)
-			return 1;
-
-		//if(ret) return
+		execute(com + com_idx);
 		close(client_sock);
 		dup2(tempinfd, STDIN_FILENO);
 	}
+
+
+//	evaluate();
+	return 0;
+}
+
+
+void evalute(){
+
+
 }
 
 int execute(struct single_command* com){
 	
 	struct passwd* pw = getpwuid(getuid());
 	char* homepath = pw->pw_dir;
-	int return_code = 0;
-	char path[256] = {0};
-
+	
+	//printf("home: %s\n", homepath);
+	
 	for(int i = 0; i < com->argc; i++){
-		memset(path, 0, sizeof(path));
-		strcpy(path, com->argv[i]);
+		if(com->argv[i][0] == '~' && ((com->argv[i][1] == '\0') || (com->argv[i][1] == '/'))){
+			char* temp_arg = malloc(sizeof(char) * strlen(com->argv[i]));
+			if(com->argv[i][1] == '\0')
+				strcpy(temp_arg, com->argv[i] + 1);
+			else
+				strcpy(temp_arg, com->argv[i] + 2);
 
-		if(path[0] == '~' && (path[1] == '\0' || path[1] == '/')){
-			char* temp_arg = malloc(sizeof(char) * strlen(path));
-			if(path[1] == '/')
-				strcpy(temp_arg, path + 2);
-
-			strcpy(path, homepath);
-			path[strlen(homepath)] = '/';
-			strcpy((path + strlen(homepath) + 1), temp_arg);
+			strcpy(com->argv[i], homepath);
+			com->argv[i][strlen(homepath)] = '/';
+			strcpy((com->argv[i] + strlen(homepath) + 1), temp_arg); 
 
 			//printf("new arg: %s\n", com->argv[i]);
 			free(temp_arg);
-			memset(com->argv[i], 0, sizeof(char) * strlen(com->argv[i]));
-			strcpy(com->argv[i], path);
 		}
 	}
 
@@ -235,31 +338,27 @@ int execute(struct single_command* com){
 	if (built_in_pos != -1) {
 		if (built_in_commands[built_in_pos].command_validate(com->argc, com->argv)) {
 			if (built_in_commands[built_in_pos].command_do(com->argc, com->argv) != 0) {
-				return_code = CDEXEERROR;
+				fprintf(stderr, "%s: Error occurs\n", com->argv[0]);
 			}
 		} 
 		else {
-			return_code = CDVARERROR;
-			//fprintf(stderr, "%s: Invalid arguments\n", com->argv[0]);
-			//return -1;
+			fprintf(stderr, "%s: Invalid arguments\n", com->argv[0]);
+			return -1;
 		}
 	} 
 	else if (strcmp(com->argv[0], "") == 0) {
-		return_code = BLANKCOM;
-		//return 0;
+		return 0;
 	} 
 	else if (strcmp(com->argv[0], "exit") == 0) {
-		return_code = EXITCOM;
-		//return 1;
+		return 1;
 	} 
 	else {
 		pid_t pid_for_exe;
 		pid_for_exe = fork();
 
 		if(pid_for_exe < 0){
-			return_code = FORKERROR;
-			//return -1;
-			//fprintf(stderr, "Fork Failed");
+			return -1;
+			fprintf(stderr, "Fork Failed");
 		}
 		else if(pid_for_exe == 0){
 
@@ -268,7 +367,8 @@ int execute(struct single_command* com){
 				"/usr/bin/",
 				"/bin/",
 				"/usr/sbin/",
-				"/sbin/"
+				"/sbin/",
+				""
 			};
 
 			for(int j = 0; j < 6; j++)
@@ -279,16 +379,7 @@ int execute(struct single_command* com){
 				execv(command_path, com->argv);
 				free(command_path);
 			}
-			return_code = COMNOTEXIST;
-		
-			close(client_sock);
-			dup2(tempoutfd, STDOUT_FILENO);
-
 			fprintf(stderr, "Command not found\n");
-			
-			tempoutfd = dup(STDOUT_FILENO);
-			dup2(client_sock, STDOUT_FILENO);
-			
 			exit(0);
 		}
 		else{
@@ -298,8 +389,6 @@ int execute(struct single_command* com){
 		}
 
 	}
-
-	return return_code;
 }
 
 

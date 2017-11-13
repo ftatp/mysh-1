@@ -8,10 +8,10 @@ LIB=-lpthread
 OBJ=./src/utils.o ./src/commands.o ./src/built_in.o ./src/signal_handlers.o
 
 %.o: %.c $(DEPS)
-	$(CC) -c -o $@ $< $(CFLAGS)
+	$(CC) -c -o $@ $< $(CFLAGS) -g
 
 mysh: $(OBJ)
-	$(CC) -o $@ $^ ./src/main.c $(CFLAGS) $(LIB)
+	$(CC) -o $@ $^ ./src/main.c $(CFLAGS) $(LIB) -g
 
 # For testing
 CXX=g++ -std=c++11

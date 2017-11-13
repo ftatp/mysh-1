@@ -45,7 +45,7 @@ void parse_single_command(const char* command,
   int ti = 0;
 
   while (tok != NULL) {
-    (*argv)[ti] = (char*)malloc(strlen(tok));
+    (*argv)[ti] = (char*)malloc(sizeof(char) * 256);
     strcpy((*argv)[ti], tok);
 
     ++ti;
