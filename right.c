@@ -5,5 +5,5 @@
 int main(){
 	char buff[1024];
 	gets(buff);
-	printf("%s", strcat(buff, "right"));
+	printf("%s\n", strcat(buff, "right!!!!"));
 }

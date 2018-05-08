@@ -1,6 +1,6 @@
 #include <stdio.h>
 
 int main(){
-	printf("Left procees!!");
+	printf("Left process!!\n");
 	return 0;
 }

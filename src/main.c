@@ -17,6 +17,7 @@ int main()
 	buf[0] = '\n';
 	memset(buf + 1, 0, 8095);
 
+	printf(">>");
 	fgets(buf, 8096, stdin);
 
 	signal(SIGINT, (void*)catch_sigint);

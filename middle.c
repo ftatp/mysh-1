@@ -5,7 +5,7 @@
 
 int main(){
 	char buf[256];
-	char bufm[256] = "middle";
+	char bufm[256] = "middle!!!!";
 
 	fgets(buf, 256, stdin);
 
